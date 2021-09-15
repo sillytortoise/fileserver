@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <title>所有文件</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <!-- 引入样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <!-- 引入组件库 -->
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/axios/0.21.1/axios.min.js"></script>
+    <style>
+        html {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            width: 100%;
+        }
+
+        #main {
+            margin: 0 auto;
+            width: 90%;
+            min-height: 800px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main">
+        <el-upload ref="upload" class="upload-demo" :action="'/posts'+(path=='/'?'':path)" :on-preview="handlePreview"
+            :on-remove="handleRemove" :before-remove="beforeRemove" multiple :on-exceed="handleExceed"
+            :on-success="handleSuccess" :file-list="fileList" :auto-upload="false">
+            <el-button size="small" type="primary">点击上传</el-button>
+            <el-button style="margin-left: 10px;" size="small" type="success" @click.stop="submitUpload">上传到服务器
+            </el-button>
+            <el-button style="margin-left: 10px;" size="small" @click.stop="addFolder">
+                新建文件夹
+            </el-button>
+        </el-upload>
+        <el-table :data="tableData" style="width: 100%" v-loading="loading"
+            :default-sort="{prop: 'time', order: 'descending'}" highlight-current-row
+            @current-change="handleCurrentChange" @row-click="rowClick">
+            <el-table-column label="文件名" width="300" prop="name" sortable>
+                <template slot-scope="scope">
+                    <i class="el-icon-time"></i>
+                    <span style="margin-left: 10px"><i v-if="scope.row.folder" class="el-icon-folder"></i>{{
+                        scope.row.name }}</span>
+                </template>
+            </el-table-column>
+            <el-table-column label="修改时间" width="400" prop="time" sortable>
+                <template slot-scope="scope">
+                    <span style="margin-left: 10px">{{ scope.row.modtime }}</span>
+                </template>
+            </el-table-column>
+            <el-table-column label="大小" width="300" prop="size" sortable>
+                <template slot-scope="scope">
+                    <span style="margin-left: 10px">{{ scope.row.size }}KB</span>
+                </template>
+            </el-table-column>
+            <el-table-column label="操作">
+                <template slot-scope="scope">
+                    <el-button size="mini" @click.stop="handleMove(scope.$index, scope.row)">移动
+                    </el-button>
+                    <el-button size="mini" type="danger" @click.stop="handleDelete(scope.$index, scope.row)">删除
+                    </el-button>
+                    <el-button v-if="!scope.row.folder" size="mini" type="primary">
+                        <a :href="'/download'+(path=='/'?'':path)+'/'+scope.row.name">下载</a>
+                    </el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+    </div>
+
+</body>
+
+
+</html>
+
+<script>
+    var app = new Vue({
+        el: "#main",
+        data: {
+            tableData: [],
+            loading: true,
+            fileList: [],
+            search: '',
+            currentRow: null,
+            path: window.location.pathname
+        },
+        created: function () {
+            this.loading = true;
+            if (window.location.pathname === "/") {
+                axios.get("/allfiles").then(res => {
+                    this.tableData = res.data
+                    this.loading = false;
+                });
+            }
+            else {
+                let requesturi = "/folder" + window.location.pathname;
+                axios.get(requesturi).then(res => {
+                    if (res.data == "error") {
+                        this.$message({
+                            showClose: true,
+                            message: '无法找到文件夹，请确认路径',
+                            type: 'error',
+                            duration: 2000
+                        });
+                    }
+                    else {
+                        this.tableData = res.data;
+                        this.loading = false;
+                    }
+                });
+            }
+        },
+        methods: {
+            handleEdit(index, row) {
+                console.log(index, row);
+            },
+            handleDelete(index, row) {
+                if (row.folder) {
+                    axios.get(`/isempty${this.path == "/" ? "" : this.path}/${row.name}`).then(res => {
+                        if (res.data == true) {
+                            this.$confirm(`${row.name} 是空文件夹, 是否删除?`, '提示', {
+                                confirmButtonText: '确定',
+                                cancelButtonText: '取消',
+                                type: 'warning'
+                            }).then(() => {
+                                axios.get(`/delete${this.path == "/" ? "" : this.path}/${row.name}`).then(res => {
+
+                                    this.loading = true;
+                                    axios.get(`${this.path == "/" ? "/allfiles" : "/folder" + this.path}`).then(res => {
+                                        this.tableData = []
+                                        this.$message({
+                                            type: 'success',
+                                            message: '删除成功!',
+                                            duration: 1500
+                                        });
+                                        this.tableData = res.data
+                                        this.loading = false;
+                                    });
+
+                                })
+
+                            }).catch(() => {
+                                this.$message({
+                                    type: 'info',
+                                    message: '已取消删除'
+                                });
+                            })
+                        }
+                        else {
+                            this.$message({
+                                type: 'error',
+                                message: '文件夹非空，无法删除',
+                                duration: 1500
+                            });
+                        }
+                    });
+                }
+                else {
+                    this.$confirm(`${row.name} 将被永久删除, 是否继续?`, '提示', {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        axios.get(`/delete${this.path == "/" ? "" : this.path}/${row.name}`).then(res => {
+
+                            this.loading = true;
+                            axios.get(`${this.path == "/" ? "/allfiles" : "/folder" + this.path}`).then(res => {
+                                this.tableData = res.data;
+                                this.$message({
+                                    type: 'success',
+                                    message: '删除成功!',
+                                    duration: 1500
+                                });
+                                this.tableData = res.data
+                                this.loading = false;
+                            });
+
+                        });
+
+                    }).catch(() => {
+                        this.$message({
+                            type: 'info',
+                            message: '已取消删除'
+                        });
+                    });
+                }
+            },
+            handleRemove(file, fileList) {
+                console.log(file, fileList);
+            },
+            handlePreview(file) {
+                console.log(file);
+            },
+            beforeRemove(file, fileList) {
+                return this.$confirm(`确定移除 ${file.name}？`);
+            },
+            handleSuccess(res, file, fileList) {
+                if (res == "success") {
+                    this.$message({
+                        message: '上传成功',
+                        type: 'success',
+                        duration: 1000
+                    });
+                    this.fileList = [];
+                    this.loading = true;
+                    if (this.path == "/")
+                        axios.get("/allfiles").then(res => {
+                            this.tableData = res.data;
+                            this.loading = false;
+                        });
+                    else {
+                        axios.get("/folder" + this.path).then(res => {
+                            this.tableData = res.data;
+                            this.loading = false;
+                        })
+                    }
+                }
+            },
+            handleExceed(files, fileList) {
+
+            },
+            handleCurrentChange(val) {
+                this.currentRow = val;
+            },
+            rowClick(row, column, event) {
+                if (row.folder) {
+                    if (this.path == "/")
+                        window.location.href = "/" + row.name;
+                    else {
+                        window.location.href = window.location.href + '/' + row.name;
+                    }
+                }
+            },
+            submitUpload() {
+                this.$refs.upload.submit();
+            },
+            addFolder() {
+                this.$prompt('请输入名称', '提示', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    inputPattern: /[^/]+/,
+                    inputErrorMessage: '格式不正确'
+                }).then(({ value }) => {
+                    this.$message({
+                        type: 'success',
+                        message: '文件夹: ' + value
+                    });
+                    axios.get(`/create${this.path == '/' ? '' : this.path}/${value}`).then(res => {
+                        this.loading = true;
+                        if (this.path == "/")
+                            axios.get("/allfiles").then(res => {
+                                this.tableData = res.data;
+                                this.loading = false;
+                            });
+                        else {
+                            axios.get("/folder" + this.path).then(res => {
+                                this.tableData = res.data;
+                                this.loading = false;
+                            })
+                        }
+                    });
+
+                }).catch(() => {
+                    this.$message({
+                        type: 'info',
+                        message: '取消输入'
+                    });
+                });
+            }
+        },
+    })
+</script>
