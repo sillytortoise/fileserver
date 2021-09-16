@@ -11,6 +11,15 @@
     <!-- 引入组件库 -->
     <script src="https://unpkg.com/element-ui/lib/index.js"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/axios/0.21.1/axios.min.js"></script>
+    <script src="https://unpkg.com/http-vue-loader"></script>
+    <!-- 最新版本的 Bootstrap 核心 CSS 文件 -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
+        integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+
+    <!-- 最新的 Bootstrap 核心 JavaScript 文件 -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"
+        integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd"
+        crossorigin="anonymous"></script>
     <style>
         html {
             width: 100%;
@@ -26,6 +35,15 @@
             width: 90%;
             min-height: 800px;
         }
+
+        a {
+            text-decoration: none;
+            color: white;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
     </style>
 </head>
 
@@ -40,10 +58,15 @@
             <el-button style="margin-left: 10px;" size="small" @click.stop="addFolder">
                 新建文件夹
             </el-button>
+            <el-button style="margin-left: 10px;" size="small" type="danger" @click.stop="batchDelete">
+                批量删除
+            </el-button>
         </el-upload>
         <el-table :data="tableData" style="width: 100%" v-loading="loading"
             :default-sort="{prop: 'time', order: 'descending'}" highlight-current-row
-            @current-change="handleCurrentChange" @row-click="rowClick">
+            @current-change="handleCurrentChange" @row-click="rowClick" @selection-change="selectionChange">
+            <el-table-column type="selection" width="55">
+            </el-table-column>
             <el-table-column label="文件名" width="300" prop="name" sortable>
                 <template slot-scope="scope">
                     <i class="el-icon-time"></i>
@@ -63,7 +86,7 @@
             </el-table-column>
             <el-table-column label="操作">
                 <template slot-scope="scope">
-                    <el-button size="mini" @click.stop="handleMove(scope.$index, scope.row)">移动
+                    <el-button size="mini" @click.stop="handleMove(scope.$index,scope.row)">移动
                     </el-button>
                     <el-button size="mini" type="danger" @click.stop="handleDelete(scope.$index, scope.row)">删除
                     </el-button>
@@ -73,6 +96,24 @@
                 </template>
             </el-table-column>
         </el-table>
+        <div id="mymodal" class="modal fade" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                                aria-hidden="true">&times;</span></button>
+                        <h4 class="modal-title">选择目录</h4>
+                    </div>
+                    <div class="modal-body">
+                        <mytree ref="mytree"></mytree>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+                        <button type="button" class="btn btn-primary" @click="submitMove">确定</button>
+                    </div>
+                </div><!-- /.modal-content -->
+            </div><!-- /.modal-dialog -->
+        </div><!-- /.modal -->
     </div>
 
 </body>
@@ -89,7 +130,12 @@
             fileList: [],
             search: '',
             currentRow: null,
-            path: window.location.pathname
+            path: window.location.pathname,
+            selection: [],
+            filetomove: ''
+        },
+        components: {
+            "mytree": httpVueLoader("/dir.vue")
         },
         created: function () {
             this.loading = true;
@@ -273,7 +319,75 @@
                         message: '取消输入'
                     });
                 });
+            },
+            selectionChange(selection) {
+                this.selection = selection;
+            },
+            batchDelete() {
+                for (let item of this.selection) {
+                    if (!item.folder) {
+                        axios.get(`/delete${this.path == "/" ? "" : this.path}/${item.name}`).then(res => {
+
+                            this.loading = true;
+                            axios.get(`${this.path == "/" ? "/allfiles" : "/folder" + this.path}`).then(res => {
+                                this.tableData = res.data;
+                                this.$message({
+                                    type: 'success',
+                                    message: '删除成功!',
+                                    duration: 1500
+                                });
+                                this.tableData = res.data
+                                this.loading = false;
+                            });
+
+                        });
+
+                    }
+                }
+            },
+            handleMove(index, row) {
+                console.log(row);
+                this.filetomove = this.joinpathstr(this.path, row.name);
+                console.log(this.filetomove);
+                $("#mymodal").modal();
+
+            },
+            submitMove() {
+                let dest = this.joinpath(this.$refs.mytree.getChecked()[0].path);
+                console.log(dest);
+                axios.get(`/movefile?file=${this.filetomove}&dest=${dest}`).then(res => {
+                    $("#mymodal").modal('hide');
+                    this.loading = true;
+                    axios.get(`${this.path == "/" ? "/allfiles" : "/folder" + this.path}`).then(res => {
+                        this.tableData = res.data;
+                        this.$message({
+                            type: 'success',
+                            message: '移动成功!',
+                            duration: 1500
+                        });
+                        this.tableData = res.data
+                        this.loading = false;
+                    });
+                });
+
+            },
+            joinpath(arr) {
+                let path = '';
+                for (i = 0; i < arr.length; i++) {
+                    path = path + "/" + arr[i];
+                }
+                path = path.replace(/[/]+/, '/');
+                return path;
+            },
+            joinpathstr() {
+                let path = '';
+                for (let i of arguments) {
+                    path = path + "/" + i;
+                }
+                path = path.replace(/[/]+/, '/');
+                return path;
             }
         },
+
     })
 </script>

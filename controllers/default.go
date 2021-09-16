@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 
 	beego "github.com/beego/beego/v2/server/web"
 )
@@ -17,6 +18,12 @@ type FileInfo struct {
 	Modtime string `json:"modtime"`
 	Size    int    `json:"size"`
 	Folder  bool   `json:"folder"`
+}
+
+type Node struct {
+	Value    string `json:"value"`
+	Label    string `json:"label"`
+	Children []Node `json:"children"`
 }
 
 func (c *MainController) Get() {
@@ -122,4 +129,56 @@ func (c *MainController) CreateFolder() {
 		panic(err)
 	}
 	c.Ctx.WriteString("success")
+}
+
+func (c *MainController) GetDir() {
+	nodelist := getChildren("files")
+	c.Data["json"] = nodelist
+	c.ServeJSON()
+}
+
+func getChildren(path string) []Node {
+	fs, _ := ioutil.ReadDir(path)
+	if len(fs) == 0 {
+		return nil
+	}
+	var nodelist []Node
+	for _, fi := range fs {
+		var node Node
+
+		if fi.IsDir() {
+			node.Label = fi.Name()
+			node.Value = fi.Name()
+			node.Children = getChildren(path + "/" + fi.Name())
+			nodelist = append(nodelist, node)
+		}
+	}
+	if len(nodelist) > 0 {
+		return nodelist
+	}
+	return nil
+}
+
+func (c *MainController) GetStaticFile() {
+	uri := c.Ctx.Request.RequestURI
+	b, err := ioutil.ReadFile("./views" + uri) // just pass the file name
+	if err != nil {
+		fmt.Print(err)
+	}
+	c.Ctx.WriteString(string(b))
+}
+
+func (c *MainController) Movefile() {
+	dest := c.GetString("dest")
+	file := c.GetString("file")
+	parts := strings.Split(file, "/")
+	filenme := parts[len(parts)-1]
+	if dest == "/" {
+		dest = ""
+	}
+	err := os.Rename("files"+file, "files"+dest+"/"+filenme)
+	if err != nil {
+		panic(err)
+	}
+	c.Ctx.WriteString("")
 }

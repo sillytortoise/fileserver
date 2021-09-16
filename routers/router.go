@@ -15,5 +15,9 @@ func init() {
 	beego.Router("/folder/*", &controllers.MainController{}, "get:GetFolderFiles")
 	beego.Router("/isempty/*", &controllers.MainController{}, "get:IsEmpty")
 	beego.Router("/create/*", &controllers.MainController{}, "get:CreateFolder")
+	beego.Router("/movefile", &controllers.MainController{}, "get:Movefile")
+	beego.Router("/getdir", &controllers.MainController{}, "get:GetDir")
+	beego.Router("/:name([a-z]+.vue)", &controllers.MainController{}, "get:GetStaticFile")
 	beego.Router("/*", &controllers.MainController{})
+
 }
